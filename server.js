@@ -638,6 +638,27 @@ const getPasswordResetToken = () => crypto.randomBytes(24).toString('hex');
 
 let cachedMailer = null;
 
+const getSmtpConfig = () => {
+    const host = `${process.env.SMTP_HOST || ''}`.trim();
+    const configuredPort = Number(process.env.SMTP_PORT || 587);
+    const user = `${process.env.SMTP_USER || ''}`.trim();
+    const pass = `${process.env.SMTP_PASS || ''}`.trim();
+    const isGmail = /(^|\.)smtp\.gmail\.com$/i.test(host) || /(^|\.)gmail\.com$/i.test(host);
+    const forceStartTls = `${process.env.SMTP_FORCE_STARTTLS || 'true'}`.trim().toLowerCase() !== 'false';
+    const port = isGmail && forceStartTls ? 587 : configuredPort;
+    const secure = port === 465;
+
+    return {
+        host,
+        port,
+        user,
+        pass,
+        secure,
+        requireTLS: !secure && (forceStartTls || isGmail),
+        isGmail,
+    };
+};
+
 const getAuthMailer = () => {
     if (cachedMailer) {
         return cachedMailer;
@@ -647,26 +668,24 @@ const getAuthMailer = () => {
         return null;
     }
 
-    const smtpHost = `${process.env.SMTP_HOST || ''}`.trim();
-    const smtpPort = Number(process.env.SMTP_PORT || 587);
-    const smtpUser = `${process.env.SMTP_USER || ''}`.trim();
-    const smtpPass = `${process.env.SMTP_PASS || ''}`.trim();
+    const smtpConfig = getSmtpConfig();
 
-    if (!smtpHost || !smtpUser || !smtpPass) {
+    if (!smtpConfig.host || !smtpConfig.user || !smtpConfig.pass) {
         return null;
     }
 
     cachedMailer = nodemailer.createTransport({
-        host: smtpHost,
-        port: smtpPort,
-        secure: smtpPort === 465,
+        host: smtpConfig.host,
+        port: smtpConfig.port,
+        secure: smtpConfig.secure,
+        requireTLS: smtpConfig.requireTLS,
         connectionTimeout: Number(process.env.SMTP_CONNECTION_TIMEOUT_MS || 10000),
         greetingTimeout: Number(process.env.SMTP_GREETING_TIMEOUT_MS || 10000),
         socketTimeout: Number(process.env.SMTP_SOCKET_TIMEOUT_MS || 15000),
         dnsTimeout: Number(process.env.SMTP_DNS_TIMEOUT_MS || 10000),
         auth: {
-            user: smtpUser,
-            pass: smtpPass,
+            user: smtpConfig.user,
+            pass: smtpConfig.pass,
         },
     });
 
@@ -686,10 +705,7 @@ const dispatchAuthEmail = async ({to, subject, text, html}) => {
         return {delivery: 'console'};
     }
 
-    const smtpHost = `${process.env.SMTP_HOST || ''}`.trim();
-    const smtpPort = Number(process.env.SMTP_PORT || 587);
-    const smtpUser = `${process.env.SMTP_USER || ''}`.trim();
-    const smtpPass = `${process.env.SMTP_PASS || ''}`.trim();
+    const smtpConfig = getSmtpConfig();
     const sendTimeoutMs = Number(process.env.SMTP_SEND_TIMEOUT_MS || 20000);
 
     const sendWithTimeout = async (transport) => {
@@ -713,8 +729,8 @@ const dispatchAuthEmail = async ({to, subject, text, html}) => {
     } catch (error) {
         const errorCode = `${error && error.code ? error.code : ''}`.toUpperCase();
         const isNetworkReachabilityError = ['ENETUNREACH', 'EHOSTUNREACH', 'ETIMEDOUT'].includes(errorCode);
-        const hasValidSmtpConfig = Boolean(smtpHost && smtpUser && smtpPass);
-        const isHostName = hasValidSmtpConfig && !net.isIP(smtpHost);
+        const hasValidSmtpConfig = Boolean(smtpConfig.host && smtpConfig.user && smtpConfig.pass);
+        const isHostName = hasValidSmtpConfig && !net.isIP(smtpConfig.host);
 
         if (!isNetworkReachabilityError || !hasValidSmtpConfig || !isHostName || !nodemailer) {
             throw error;
@@ -722,7 +738,7 @@ const dispatchAuthEmail = async ({to, subject, text, html}) => {
 
         let ipv4Addresses = [];
         try {
-            ipv4Addresses = await dns.resolve4(smtpHost);
+            ipv4Addresses = await dns.resolve4(smtpConfig.host);
         } catch (resolveError) {
             throw error;
         }
@@ -731,8 +747,8 @@ const dispatchAuthEmail = async ({to, subject, text, html}) => {
         const retryAttempts = [];
 
         retryHosts.forEach((host) => {
-            retryAttempts.push({host, port: smtpPort, secure: smtpPort === 465});
-            if (smtpPort === 465) {
+            retryAttempts.push({host, port: smtpConfig.port, secure: smtpConfig.secure, requireTLS: smtpConfig.requireTLS});
+            if (smtpConfig.port !== 587) {
                 retryAttempts.push({host, port: 587, secure: false, requireTLS: true});
             }
         });
@@ -750,11 +766,11 @@ const dispatchAuthEmail = async ({to, subject, text, html}) => {
                     socketTimeout: Number(process.env.SMTP_SOCKET_TIMEOUT_MS || 15000),
                     dnsTimeout: Number(process.env.SMTP_DNS_TIMEOUT_MS || 10000),
                     auth: {
-                        user: smtpUser,
-                        pass: smtpPass,
+                        user: smtpConfig.user,
+                        pass: smtpConfig.pass,
                     },
                     tls: {
-                        servername: smtpHost,
+                        servername: smtpConfig.host,
                     },
                 });
 
