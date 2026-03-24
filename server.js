@@ -9,6 +9,8 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const crypto = require('crypto');
+const net = require('net');
+const dns = require('dns').promises;
 const {spawn, spawnSync} = require('child_process');
 const {Server} = require('socket.io');
 
@@ -684,22 +686,87 @@ const dispatchAuthEmail = async ({to, subject, text, html}) => {
         return {delivery: 'console'};
     }
 
+    const smtpHost = `${process.env.SMTP_HOST || ''}`.trim();
+    const smtpPort = Number(process.env.SMTP_PORT || 587);
+    const smtpUser = `${process.env.SMTP_USER || ''}`.trim();
+    const smtpPass = `${process.env.SMTP_PASS || ''}`.trim();
     const sendTimeoutMs = Number(process.env.SMTP_SEND_TIMEOUT_MS || 20000);
 
-    await Promise.race([
-        mailer.sendMail({
-            from: fromAddress,
-            to,
-            subject,
-            text,
-            html,
-        }),
-        new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('SMTP send timed out. Please retry.')), sendTimeoutMs);
-        }),
-    ]);
+    const sendWithTimeout = async (transport) => {
+        await Promise.race([
+            transport.sendMail({
+                from: fromAddress,
+                to,
+                subject,
+                text,
+                html,
+            }),
+            new Promise((_, reject) => {
+                setTimeout(() => reject(new Error('SMTP send timed out. Please retry.')), sendTimeoutMs);
+            }),
+        ]);
+    };
 
-    return {delivery: 'smtp'};
+    try {
+        await sendWithTimeout(mailer);
+        return {delivery: 'smtp'};
+    } catch (error) {
+        const errorCode = `${error && error.code ? error.code : ''}`.toUpperCase();
+        const isNetworkReachabilityError = ['ENETUNREACH', 'EHOSTUNREACH', 'ETIMEDOUT'].includes(errorCode);
+        const hasValidSmtpConfig = Boolean(smtpHost && smtpUser && smtpPass);
+        const isHostName = hasValidSmtpConfig && !net.isIP(smtpHost);
+
+        if (!isNetworkReachabilityError || !hasValidSmtpConfig || !isHostName || !nodemailer) {
+            throw error;
+        }
+
+        let ipv4Addresses = [];
+        try {
+            ipv4Addresses = await dns.resolve4(smtpHost);
+        } catch (resolveError) {
+            throw error;
+        }
+
+        const retryHosts = ipv4Addresses.slice(0, 2);
+        const retryAttempts = [];
+
+        retryHosts.forEach((host) => {
+            retryAttempts.push({host, port: smtpPort, secure: smtpPort === 465});
+            if (smtpPort === 465) {
+                retryAttempts.push({host, port: 587, secure: false, requireTLS: true});
+            }
+        });
+
+        let lastRetryError = error;
+        for (const attempt of retryAttempts) {
+            try {
+                const retryMailer = nodemailer.createTransport({
+                    host: attempt.host,
+                    port: attempt.port,
+                    secure: attempt.secure,
+                    requireTLS: Boolean(attempt.requireTLS),
+                    connectionTimeout: Number(process.env.SMTP_CONNECTION_TIMEOUT_MS || 10000),
+                    greetingTimeout: Number(process.env.SMTP_GREETING_TIMEOUT_MS || 10000),
+                    socketTimeout: Number(process.env.SMTP_SOCKET_TIMEOUT_MS || 15000),
+                    dnsTimeout: Number(process.env.SMTP_DNS_TIMEOUT_MS || 10000),
+                    auth: {
+                        user: smtpUser,
+                        pass: smtpPass,
+                    },
+                    tls: {
+                        servername: smtpHost,
+                    },
+                });
+
+                await sendWithTimeout(retryMailer);
+                return {delivery: 'smtp'};
+            } catch (retryError) {
+                lastRetryError = retryError;
+            }
+        }
+
+        throw lastRetryError;
+    }
 };
 
 const isAuthEmailConfigured = () => {
