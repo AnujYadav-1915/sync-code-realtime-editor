@@ -218,9 +218,7 @@ const Home = () => {
     const [showForgotPassword, setShowForgotPassword] = useState(false);
     const [forgotPasswordEmail, setForgotPasswordEmail] = useState('');
     const [forgotPasswordOtp, setForgotPasswordOtp] = useState('');
-    const [forgotPasswordResetToken, setForgotPasswordResetToken] = useState('');
     const [forgotPasswordNewPassword, setForgotPasswordNewPassword] = useState('');
-    const [forgotRecoveryMethod, setForgotRecoveryMethod] = useState('otp');
     const [isForgotPasswordRequesting, setIsForgotPasswordRequesting] = useState(false);
     const [isForgotPasswordResetting, setIsForgotPasswordResetting] = useState(false);
     const [showChangePassword, setShowChangePassword] = useState(false);
@@ -379,16 +377,12 @@ const Home = () => {
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
         const incomingEmail = params.get('email') || '';
-        const incomingResetToken = params.get('resetToken') || '';
 
-        if (incomingEmail || incomingResetToken) {
+        if (incomingEmail) {
             setShowForgotPassword(true);
             setAuthMode('signin');
             if (incomingEmail) {
                 setForgotPasswordEmail(incomingEmail);
-            }
-            if (incomingResetToken) {
-                setForgotPasswordResetToken(incomingResetToken);
             }
             scrollToSection('cta');
         }
@@ -984,11 +978,6 @@ const Home = () => {
     };
 
     const handleForgotPasswordRequest = async () => {
-        if (forgotRecoveryMethod === 'old-password') {
-            toast('Use the old/new password form below to continue.');
-            return;
-        }
-
         if (!forgotPasswordEmail.trim()) {
             toast.error('Enter your registered email first.');
             return;
@@ -996,7 +985,6 @@ const Home = () => {
 
         setIsForgotPasswordRequesting(true);
         setForgotPasswordOtp('');
-        setForgotPasswordResetToken('');
         try {
             if (isFirebaseConfigured && auth) {
                 await sendPasswordResetEmail(auth, forgotPasswordEmail.trim());
@@ -1009,7 +997,7 @@ const Home = () => {
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({
                     email: forgotPasswordEmail.trim(),
-                    method: forgotRecoveryMethod === 'link' ? 'link' : 'otp',
+                    method: 'otp',
                 }),
             });
             const payload = await response.json();
@@ -1028,11 +1016,6 @@ const Home = () => {
     };
 
     const handleForgotPasswordReset = async () => {
-        if (forgotRecoveryMethod === 'old-password') {
-            toast('Use Update Password for old-password method.');
-            return;
-        }
-
         if (!forgotPasswordEmail.trim()) {
             toast.error('Email is required.');
             return;
@@ -1043,13 +1026,8 @@ const Home = () => {
             return;
         }
 
-        if (forgotRecoveryMethod === 'otp' && !forgotPasswordOtp.trim()) {
+        if (!forgotPasswordOtp.trim()) {
             toast.error('Provide OTP to continue.');
-            return;
-        }
-
-        if (forgotRecoveryMethod === 'link' && !forgotPasswordResetToken.trim()) {
-            toast.error('Provide reset token to continue.');
             return;
         }
 
@@ -1060,8 +1038,7 @@ const Home = () => {
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({
                     email: forgotPasswordEmail.trim(),
-                    otp: forgotRecoveryMethod === 'otp' ? forgotPasswordOtp.trim() : '',
-                    resetToken: forgotRecoveryMethod === 'link' ? forgotPasswordResetToken.trim() : '',
+                    otp: forgotPasswordOtp.trim(),
                     newPassword: forgotPasswordNewPassword,
                 }),
             });
@@ -1071,7 +1048,6 @@ const Home = () => {
             toast.success(payload?.message || 'Password reset successful. Sign in with new password.');
             setShowForgotPassword(false);
             setForgotPasswordOtp('');
-            setForgotPasswordResetToken('');
             setForgotPasswordNewPassword('');
         } catch (error) {
             toast.error(error.message || 'Failed to reset password.');
@@ -2225,41 +2201,22 @@ renderSharedEditor(roomId)`}
                             )}
                             <button
                                 type="button"
-                                onClick={() => { setShowForgotPassword((prev) => !prev); setForgotRecoveryMethod('otp'); setForgotPasswordOtp(''); setForgotPasswordResetToken(''); }}
+                                onClick={() => { setShowForgotPassword((prev) => !prev); setForgotPasswordOtp(''); }}
                                 className="w-full rounded-xl border border-[#334155] px-4 py-2 text-sm font-semibold text-[#22D3EE] transition hover:bg-[#22D3EE]/10"
                             >
                                 {showForgotPassword ? 'Hide Forgot Password' : 'Forgot Password?'}
                             </button>
                             {showForgotPassword ? (
                                 <div className="space-y-3 rounded-xl border border-[#334155] bg-[#0B1120] p-4">
-                                    <div className="grid gap-2 sm:grid-cols-3">
-                                        {['otp', 'link', 'old-password'].map((method) => (
-                                            <button key={method} type="button" onClick={() => { setForgotRecoveryMethod(method); setForgotPasswordOtp(''); setForgotPasswordResetToken(''); }} className={`rounded-xl border px-3 py-2 text-xs font-semibold transition ${forgotRecoveryMethod === method ? 'border-[#8B5CF6] bg-[#8B5CF6]/20 text-[#F8FAFC]' : 'border-[#334155] text-[#94A3B8]'}`}>
-                                                {method === 'otp' ? 'OTP' : method === 'link' ? 'Reset Link' : 'Old Password'}
-                                            </button>
-                                        ))}
+                                    <div className="space-y-2">
+                                        <input type="email" className="w-full rounded-xl border border-[#334155] bg-[#020617] px-4 py-3 text-sm outline-none transition focus:border-[#8B5CF6]" placeholder="Registered email" value={forgotPasswordEmail} onChange={(e) => setForgotPasswordEmail(e.target.value)} />
+                                        <input type="text" className="w-full rounded-xl border border-[#334155] bg-[#020617] px-4 py-3 text-sm outline-none transition focus:border-[#8B5CF6]" placeholder="OTP (from email)" value={forgotPasswordOtp} onChange={(e) => setForgotPasswordOtp(e.target.value)} />
+                                        <input type="password" className="w-full rounded-xl border border-[#334155] bg-[#020617] px-4 py-3 text-sm outline-none transition focus:border-[#8B5CF6]" placeholder="New password" value={forgotPasswordNewPassword} onChange={(e) => setForgotPasswordNewPassword(e.target.value)} />
+                                        <div className="grid gap-2 sm:grid-cols-2">
+                                            <button type="button" onClick={handleForgotPasswordRequest} disabled={isForgotPasswordRequesting} className="rounded-xl border border-[#334155] px-4 py-3 text-sm font-semibold transition hover:bg-[#1E293B] disabled:opacity-50">{isForgotPasswordRequesting ? 'Sending...' : 'Send OTP'}</button>
+                                            <button type="button" onClick={handleForgotPasswordReset} disabled={isForgotPasswordResetting} className="rounded-xl bg-[#1E293B] px-4 py-3 text-sm font-semibold transition hover:bg-[#334155] disabled:opacity-50">{isForgotPasswordResetting ? 'Updating...' : 'Set New Password'}</button>
+                                        </div>
                                     </div>
-                                    {forgotRecoveryMethod === 'old-password' ? (
-                                        <div className="space-y-2">
-                                            <input type="password" className="w-full rounded-xl border border-[#334155] bg-[#020617] px-4 py-3 text-sm outline-none transition focus:border-[#8B5CF6]" placeholder="Old password" value={oldPassword} onChange={(e) => setOldPassword(e.target.value)} />
-                                            <input type="password" className="w-full rounded-xl border border-[#334155] bg-[#020617] px-4 py-3 text-sm outline-none transition focus:border-[#8B5CF6]" placeholder="New password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
-                                            <button type="button" onClick={handleChangePassword} disabled={isChangingPassword} className="w-full rounded-xl bg-[#1E293B] px-4 py-3 text-sm font-semibold transition hover:bg-[#334155] disabled:opacity-50">{isChangingPassword ? 'Updating...' : 'Update Password'}</button>
-                                        </div>
-                                    ) : (
-                                        <div className="space-y-2">
-                                            <input type="email" className="w-full rounded-xl border border-[#334155] bg-[#020617] px-4 py-3 text-sm outline-none transition focus:border-[#8B5CF6]" placeholder="Registered email" value={forgotPasswordEmail} onChange={(e) => setForgotPasswordEmail(e.target.value)} />
-                                            {forgotRecoveryMethod === 'otp' ? (
-                                                <input type="text" className="w-full rounded-xl border border-[#334155] bg-[#020617] px-4 py-3 text-sm outline-none transition focus:border-[#8B5CF6]" placeholder="OTP (from email)" value={forgotPasswordOtp} onChange={(e) => setForgotPasswordOtp(e.target.value)} />
-                                            ) : (
-                                                <input type="text" className="w-full rounded-xl border border-[#334155] bg-[#020617] px-4 py-3 text-sm outline-none transition focus:border-[#8B5CF6]" placeholder="Reset token (from link)" value={forgotPasswordResetToken} onChange={(e) => setForgotPasswordResetToken(e.target.value)} />
-                                            )}
-                                            <input type="password" className="w-full rounded-xl border border-[#334155] bg-[#020617] px-4 py-3 text-sm outline-none transition focus:border-[#8B5CF6]" placeholder="New password" value={forgotPasswordNewPassword} onChange={(e) => setForgotPasswordNewPassword(e.target.value)} />
-                                            <div className="grid gap-2 sm:grid-cols-2">
-                                                <button type="button" onClick={handleForgotPasswordRequest} disabled={isForgotPasswordRequesting} className="rounded-xl border border-[#334155] px-4 py-3 text-sm font-semibold transition hover:bg-[#1E293B] disabled:opacity-50">{isForgotPasswordRequesting ? 'Sending...' : forgotRecoveryMethod === 'otp' ? 'Send OTP' : 'Send Reset Link'}</button>
-                                                <button type="button" onClick={handleForgotPasswordReset} disabled={isForgotPasswordResetting} className="rounded-xl bg-[#1E293B] px-4 py-3 text-sm font-semibold transition hover:bg-[#334155] disabled:opacity-50">{isForgotPasswordResetting ? 'Updating...' : 'Set New Password'}</button>
-                                            </div>
-                                        </div>
-                                    )}
                                 </div>
                             ) : null}
                             {isFirebaseConfigured ? (
