@@ -2870,5 +2870,5 @@ app.get('*', (req, res) => {
     return res.status(200).send('Realtime code editor backend is running.');
 });
 
-const PORT = process.env.SERVER_PORT || 5000;
+const PORT = Number(process.env.PORT || process.env.SERVER_PORT || 5000);
 server.listen(PORT, () => console.log(`Listening on port ${PORT}`));
