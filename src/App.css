@@ -4674,6 +4674,18 @@ footer h4 {
 }
 
 @media screen and (max-width: 900px) {
+    html,
+    body {
+        overflow-x: hidden;
+    }
+
+    .editorPageLayout,
+    .editorPageLayout.mainWrap,
+    .editorPageLayout .editorWorkspace {
+        max-width: 100vw;
+        overflow-x: hidden;
+    }
+
     .editorPageLayout.mainWrap,
     .editorPageLayout.mainWrap.sidebarCollapsed {
         grid-template-columns: 1fr !important;
@@ -4710,6 +4722,22 @@ footer h4 {
 
     .editorPageLayout .editorWrap {
         padding: 0 12px 14px;
+    }
+
+    .editorPageLayout .challengePanel,
+    .editorPageLayout .editorWrap,
+    .editorPageLayout .editorSplit,
+    .editorPageLayout .editorCodeShell,
+    .editorPageLayout .editorPane,
+    .editorPageLayout .challengeMain,
+    .editorPageLayout .challengeBox,
+    .editorPageLayout .timerCard,
+    .editorPageLayout .stdinBox,
+    .editorPageLayout .outputBox,
+    .editorPageLayout .executionOutputPanel {
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
     }
 
     .editorPageLayout .challengeHeader,
@@ -4762,6 +4790,20 @@ footer h4 {
     .editorPageLayout .executionOutputPanel {
         height: auto !important;
         min-height: 200px;
+    }
+
+    .editorPageLayout .executionOutputHeader {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+    }
+
+    .editorPageLayout .outputHeaderLeft,
+    .editorPageLayout .verdictBadgeRow {
+        min-width: 0;
+        overflow-x: auto;
+        white-space: nowrap;
+        padding-bottom: 2px;
     }
 
     .editorPageLayout .executionMetaWrap {
